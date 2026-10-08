@@ -1,7 +1,7 @@
 package com.example.country_info_st_v1.controller;
 
-import com.example.country_info_st_v1.dto.request.CountryNameRequest;
-import com.example.country_info_st_v1.dto.response.CountryNameResponse;
+import com.example.country_info_st_v1.dto.request.CountryInfoRequest;
+import com.example.country_info_st_v1.dto.response.CountryInfoResponse;
 import com.example.country_info_st_v1.service.CountryInfoService;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -25,11 +25,11 @@ public class CountryInfoController {
         this.countryInfoService = countryInfoService;
     }
 
-    @PostMapping("/getCountryName")
-    public ResponseEntity<?> getCountryName(@Validated @RequestBody CountryNameRequest countryNameRequest) throws JsonProcessingException {
-        log.info("=====INCOMING COUNTRY NAME REQUEST: {}", objectMapper.writeValueAsString(countryNameRequest));
+    @PostMapping("/getCountryInfo")
+    public ResponseEntity<?> getCountryInfo(@Validated @RequestBody CountryInfoRequest countryInfoRequest) throws JsonProcessingException {
+        log.info("=====INCOMING COUNTRY INFO REQUEST: {}", objectMapper.writeValueAsString(countryInfoRequest));
 
-        CountryNameResponse countryNameResponse = countryInfoService.getCountryName(countryNameRequest);
-        return ResponseEntity.ok(countryNameResponse);
+        CountryInfoResponse countryInfoResponse = countryInfoService.getCountryInfo(countryInfoRequest);
+        return ResponseEntity.ok(countryInfoResponse);
     }
 }

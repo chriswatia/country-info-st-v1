@@ -4,7 +4,7 @@ import jakarta.validation.constraints.NotBlank;
 import lombok.Data;
 
 @Data
-public class CountryNameRequest {
+public class CountryInfoRequest {
     @NotBlank(message = "Country name is required")
     private String name;
 }
