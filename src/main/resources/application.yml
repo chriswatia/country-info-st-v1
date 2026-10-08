@@ -1,18 +1,20 @@
 server:
   port: 8080
+  shutdown: graceful
   servlet:
     context-path: /country-info-st-v1
 spring:
   application:
     name: country-info-st-v1
+  lifecycle:
+    timeout-per-shutdown-phase: 20s
   datasource:
-    url: ${DB_CONNECTION_STRING:jdbc:mysql://localhost:3306/country_info_db}
-    username: ${DB_USERNAME:root}
-    password: ${DB_PASSWORD:admin}
-    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: ${DB_CONNECTION_STRING}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
     hikari:
-      minimum-idle: 10
-      maximum-pool-size: 50
+      minimum-idle: ${DB_POOL_MIN_IDLE:2}
+      maximum-pool-size: ${DB_POOL_MAX_SIZE:10}
       idle-timeout: 30000
       max-lifetime: 60000
       connection-timeout: 30000
@@ -34,3 +36,24 @@ springdoc:
   swagger-ui:
     path: /swagger-ui.html
     operationsSorter: method
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      group:
+        readiness:
+          include: readinessState,db
+  metrics:
+    tags:
+      application: ${spring.application.name}
+
+logging:
+  structured:
+    format:
+      console: logstash

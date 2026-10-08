@@ -16,7 +16,9 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import freemarker.template.Template;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
 import freemarker.template.Configuration;
 import org.springframework.ui.freemarker.FreeMarkerTemplateUtils;
 import org.w3c.dom.Document;
@@ -79,8 +81,8 @@ public class CountryInfoService {
         // Call the external SOAP service to get the ISO Code by country name
         httpResponse = httpService.HttpPOST(xmlRequest, applicationProperties.getCountryInfoUrl());
         if (!httpResponse.get("RESPONSE_CODE").equals("200")) {
-            throw new IllegalStateException("Country IsoCode request failed: "
-                    + httpResponse.get("RESPONSE_BODY"));
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
+                "Country information provider is temporarily unavailable");
         }
 
         responsePayload = httpResponse.get("RESPONSE_BODY");
@@ -99,8 +101,8 @@ public class CountryInfoService {
             httpResponse = httpService.HttpPOST(xmlRequest, applicationProperties.getCountryInfoUrl());
 
             if (!httpResponse.get("RESPONSE_CODE").equals("200")) {
-                throw new IllegalStateException("Full Country Info request failed: "
-                        + httpResponse.get("RESPONSE_BODY"));
+                throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
+                    "Country information provider is temporarily unavailable");
             }
 
             responsePayload = httpResponse.get("RESPONSE_BODY");
