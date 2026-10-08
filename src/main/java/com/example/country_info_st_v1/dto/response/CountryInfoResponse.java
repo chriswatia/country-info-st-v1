@@ -14,5 +14,5 @@ public class CountryInfoResponse {
     private String continentCode;
     private String currencyISOCode;
     private String countryFlag;
-    private List<Language> languages = new ArrayList<>();
+    private List<LanguageResponse> languages = new ArrayList<>();
 }

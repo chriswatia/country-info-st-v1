@@ -21,7 +21,7 @@ spring:
     properties:
       show-sql: false
     hibernate:
-      ddl-auto: update
+      ddl-auto: none
     show-sql: false
 
 settings:

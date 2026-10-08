@@ -20,7 +20,9 @@ public class HttpService {
     }
 
     public HashMap<String, String> HttpPOST(String xmlRequest, String url) {
-
+        log.info("----------- HTTP Request Start  ---------------------------");
+        log.info("HTTP URL :: {}", url);
+        log.info("HTTP REQUEST :: {}", xmlRequest);
         String HttpMessageCode="";
         String HttpMessage;
         HashMap<String, String> responsePayload = new HashMap<String, String>();

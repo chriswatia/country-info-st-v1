@@ -3,7 +3,11 @@ package com.example.country_info_st_v1.service;
 import com.example.country_info_st_v1.dto.request.CountryInfoRequest;
 import com.example.country_info_st_v1.dto.response.CountryIsoCodeResponse;
 import com.example.country_info_st_v1.dto.response.CountryInfoResponse;
-import com.example.country_info_st_v1.dto.response.Language;
+import com.example.country_info_st_v1.dto.response.LanguageResponse;
+import com.example.country_info_st_v1.model.CountryInfo;
+import com.example.country_info_st_v1.model.Language;
+import com.example.country_info_st_v1.repository.CountryInfoRepository;
+import com.example.country_info_st_v1.repository.LanguageRepository;
 import com.example.country_info_st_v1.utils.ApplicationProperties;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -24,9 +28,12 @@ import javax.xml.parsers.ParserConfigurationException;
 import javax.xml.parsers.DocumentBuilderFactory;
 import java.io.IOException;
 import java.io.StringReader;
+import java.time.LocalDateTime;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 @Service
 @Slf4j
@@ -34,6 +41,8 @@ public class CountryInfoService {
     private final ApplicationProperties applicationProperties;
     private final Configuration freemarker;
     private final HttpService httpService;
+    private final CountryInfoRepository countryInfoRepository;
+    private final LanguageRepository languageRepository;
     private static final ObjectMapper objectMapper = new ObjectMapper();
     String xmlRequest = null;
     HashMap<String, String> httpResponse = null;
@@ -43,19 +52,24 @@ public class CountryInfoService {
     DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
 
     // Constructor injection for dependencies
-    public CountryInfoService(ApplicationProperties applicationProperties, Configuration freemarker, HttpService httpService) {
+    public CountryInfoService(ApplicationProperties applicationProperties, Configuration freemarker,
+                              HttpService httpService, CountryInfoRepository countryInfoRepository,
+                              LanguageRepository languageRepository) {
         this.applicationProperties = applicationProperties;
         this.freemarker = freemarker;
         this.httpService = httpService;
+        this.countryInfoRepository = countryInfoRepository;
+        this.languageRepository = languageRepository;
     }
 
-
+    // Get Country Info by country name
     public CountryInfoResponse getCountryInfo(CountryInfoRequest countryInfoRequest) throws JsonProcessingException {
         CountryInfoResponse countryInfoResponse = new CountryInfoResponse();
         // Convert the received country name to sentence case
-        String countryName = countryInfoRequest.getName().trim();
-        countryName = countryName.substring(0, 1).toUpperCase(Locale.ROOT)
-                + countryName.substring(1).toLowerCase(Locale.ROOT);
+        String countryName = Arrays.stream(countryInfoRequest.getName().trim().split("\\s+"))
+                .map(word -> word.substring(0, 1).toUpperCase(Locale.ROOT)
+                        + word.substring(1).toLowerCase(Locale.ROOT))
+                .collect(Collectors.joining(" "));
 
         // Format the request payload using FreeMarker template
         xmlRequest = formatCountryNameRequest(countryName);
@@ -94,11 +108,43 @@ public class CountryInfoService {
 
             // Parse the FullCountryInfo response and return the result
             countryInfoResponse = parseFullCountryInfoResponse(responsePayload);
+
+            // SAVE COUNTRY INFO & LANGUAGES TO DB
+            if(!countryInfoResponse.getIsoCode().isEmpty()) {
+                CountryInfo countryInfo = new CountryInfo();
+                countryInfo.setIsoCode(countryInfoResponse.getIsoCode());
+                countryInfo.setName(countryInfoResponse.getName());
+                countryInfo.setCapitalCity(countryInfoResponse.getCapitalCity());
+                countryInfo.setPhoneCode(countryInfoResponse.getPhoneCode());
+                countryInfo.setContinentCode(countryInfoResponse.getContinentCode());
+                countryInfo.setCurrencyISOCode(countryInfoResponse.getCurrencyISOCode());
+                countryInfo.setCountryFlag(countryInfoResponse.getCountryFlag());
+
+                // Check if the country info already exists
+                CountryInfo existingCountryInfo = countryInfoRepository.findByIsoCode(countryInfo.getIsoCode());
+                if (existingCountryInfo == null) {
+                    countryInfoRepository.save(countryInfo);
+                    // Get the saved country info
+                    CountryInfo savedCountryInfo = countryInfoRepository.findByIsoCode(countryInfo.getIsoCode());
+                    // Save languages
+                    if(!countryInfoResponse.getLanguages().isEmpty()) {
+                        Language language = new Language();
+                        for(LanguageResponse languageResponse : countryInfoResponse.getLanguages()) {
+                            language.setIsoCode(languageResponse.getIsoCode());
+                            language.setName(languageResponse.getName());
+                            language.setCountryId(savedCountryInfo.getId());
+                            languageRepository.save(language);
+                        }
+                    }
+                }
+
+            }
         }
 
         return countryInfoResponse;
     }
 
+    // Helper method to format Request
     private String formatCountryNameRequest(String countryName) {
         templateData = new HashMap<>();
         freemarker.setClassForTemplateLoading(CountryInfoService.class, "/templates");
@@ -113,7 +159,6 @@ public class CountryInfoService {
     }
 
     private String formatFullCountryInfoRequest(String countryIsoCode) {
-        log.info("Country IsoCode request: {}", countryIsoCode);
         templateData = new HashMap<>();
         freemarker.setClassForTemplateLoading(CountryInfoService.class, "/templates");
         try {
@@ -188,7 +233,7 @@ public class CountryInfoService {
                         .getElementsByTagNameNS("*", "tLanguage");
                 for (int i = 0; i < languages.getLength(); i++) {
                     Element languageElement = (Element) languages.item(i);
-                    Language language = new Language();
+                    LanguageResponse language = new LanguageResponse();
                     language.setIsoCode(getNodeValue(languageElement, "sISOCode"));
                     language.setName(getNodeValue(languageElement, "sName"));
                     countryInfoResponse.getLanguages().add(language);
