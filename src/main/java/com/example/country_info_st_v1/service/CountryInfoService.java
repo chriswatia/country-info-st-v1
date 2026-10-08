@@ -1,14 +1,17 @@
 package com.example.country_info_st_v1.service;
 
 import com.example.country_info_st_v1.dto.request.CountryInfoRequest;
+import com.example.country_info_st_v1.dto.request.CountryRequest;
 import com.example.country_info_st_v1.dto.response.CountryIsoCodeResponse;
 import com.example.country_info_st_v1.dto.response.CountryInfoResponse;
+import com.example.country_info_st_v1.dto.response.GenericResponse;
 import com.example.country_info_st_v1.dto.response.LanguageResponse;
 import com.example.country_info_st_v1.model.CountryInfo;
 import com.example.country_info_st_v1.model.Language;
 import com.example.country_info_st_v1.repository.CountryInfoRepository;
 import com.example.country_info_st_v1.repository.LanguageRepository;
 import com.example.country_info_st_v1.utils.ApplicationProperties;
+import com.example.country_info_st_v1.utils.CountryInfoMapper;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import freemarker.template.Template;
@@ -28,11 +31,7 @@ import javax.xml.parsers.ParserConfigurationException;
 import javax.xml.parsers.DocumentBuilderFactory;
 import java.io.IOException;
 import java.io.StringReader;
-import java.time.LocalDateTime;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.Locale;
-import java.util.Map;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
@@ -44,6 +43,8 @@ public class CountryInfoService {
     private final CountryInfoRepository countryInfoRepository;
     private final LanguageRepository languageRepository;
     private static final ObjectMapper objectMapper = new ObjectMapper();
+    private final CountryInfoMapper countryInfoMapper;
+
     String xmlRequest = null;
     HashMap<String, String> httpResponse = null;
     String responsePayload = null;
@@ -54,12 +55,13 @@ public class CountryInfoService {
     // Constructor injection for dependencies
     public CountryInfoService(ApplicationProperties applicationProperties, Configuration freemarker,
                               HttpService httpService, CountryInfoRepository countryInfoRepository,
-                              LanguageRepository languageRepository) {
+                              LanguageRepository languageRepository, CountryInfoMapper countryInfoMapper) {
         this.applicationProperties = applicationProperties;
         this.freemarker = freemarker;
         this.httpService = httpService;
         this.countryInfoRepository = countryInfoRepository;
         this.languageRepository = languageRepository;
+        this.countryInfoMapper = countryInfoMapper;
     }
 
     // Get Country Info by country name
@@ -91,7 +93,7 @@ public class CountryInfoService {
 
         // Use the extracted ISO code to call another SOAP endpoint that takes
         //sCountryISOCode as a request body parameter to fetch FullCountryInfo
-        if(countryIsoCodeResponse.getCountryIsoCode() != null) {
+        if (countryIsoCodeResponse.getCountryIsoCode() != null) {
             xmlRequest = formatFullCountryInfoRequest(countryIsoCodeResponse.getCountryIsoCode());
 
             httpResponse = httpService.HttpPOST(xmlRequest, applicationProperties.getCountryInfoUrl());
@@ -110,7 +112,7 @@ public class CountryInfoService {
             countryInfoResponse = parseFullCountryInfoResponse(responsePayload);
 
             // SAVE COUNTRY INFO & LANGUAGES TO DB
-            if(!countryInfoResponse.getIsoCode().isEmpty()) {
+            if (!countryInfoResponse.getIsoCode().isEmpty()) {
                 CountryInfo countryInfo = new CountryInfo();
                 countryInfo.setIsoCode(countryInfoResponse.getIsoCode());
                 countryInfo.setName(countryInfoResponse.getName());
@@ -127,9 +129,9 @@ public class CountryInfoService {
                     // Get the saved country info
                     CountryInfo savedCountryInfo = countryInfoRepository.findByIsoCode(countryInfo.getIsoCode());
                     // Save languages
-                    if(!countryInfoResponse.getLanguages().isEmpty()) {
+                    if (!countryInfoResponse.getLanguages().isEmpty()) {
                         Language language = new Language();
-                        for(LanguageResponse languageResponse : countryInfoResponse.getLanguages()) {
+                        for (LanguageResponse languageResponse : countryInfoResponse.getLanguages()) {
                             language.setIsoCode(languageResponse.getIsoCode());
                             language.setName(languageResponse.getName());
                             language.setCountryId(savedCountryInfo.getId());
@@ -144,6 +146,100 @@ public class CountryInfoService {
         return countryInfoResponse;
     }
 
+    // Get all country information
+    public GenericResponse getAllCountries() {
+        return GenericResponse.builder()
+                .message("Countries fetched successfully.")
+                .statusCode("00")
+                .data(countryInfoMapper.toResponseList(
+                        countryInfoRepository.findAll()
+                ))
+                .build();
+    }
+
+    // Get country information by ID
+    public GenericResponse getCountryById(Integer id) {
+        CountryInfo countryInfo = countryInfoRepository.findById(id).orElse(null);
+        if (countryInfo == null) {
+            return GenericResponse.builder()
+                    .message("Country not found with ID: " + id)
+                    .statusCode("01")
+                    .data(null)
+                    .build();
+        }
+
+        return GenericResponse.builder()
+                .message("Country information fetched successfully.")
+                .statusCode("00")
+                .data(countryInfoMapper.toResponse(countryInfo))
+                .build();
+    }
+
+    // Update country information
+    public GenericResponse updateCountry(CountryRequest countryRequest) {
+        CountryInfo countryInfo = countryInfoRepository.findByIsoCode(countryRequest.getIsoCode());
+        if (countryInfo == null) {
+            return GenericResponse.builder()
+                    .message("Country with ISO code " + countryRequest.getIsoCode() + " not found.")
+                    .statusCode("01")
+                    .data(null)
+                    .build();
+        }
+
+        // Update the fields of the countryInfo entity with the values from countryRequest
+        countryInfo.setName(countryRequest.getName() != null ? countryRequest.getName().trim() : countryInfo.getName());
+        countryInfo.setCapitalCity(countryRequest.getCapitalCity() != null ? countryRequest.getCapitalCity().trim() : countryInfo.getCapitalCity());
+        countryInfo.setPhoneCode(countryRequest.getPhoneCode() != null ? countryRequest.getPhoneCode().trim() : countryInfo.getPhoneCode());
+        countryInfo.setContinentCode(countryRequest.getContinentCode() != null ? countryRequest.getContinentCode().trim() : countryInfo.getContinentCode());
+        countryInfo.setCurrencyISOCode(countryRequest.getCurrencyISOCode() != null ? countryRequest.getCurrencyISOCode().trim() : countryInfo.getCurrencyISOCode());
+        countryInfo.setCountryFlag(countryRequest.getCountryFlag() != null ? countryRequest.getCountryFlag().trim() : countryInfo.getCountryFlag());
+
+        // Save the updated entity
+        CountryInfo updatedCountryInfo = countryInfoRepository.save(countryInfo);
+
+        // Update languages if provided
+        if (countryRequest.getLanguages() != null && !countryRequest.getLanguages().isEmpty()) {
+            // Delete existing languages for the country
+            List<Language> existingLanguages = languageRepository.findByCountryId(updatedCountryInfo.getId());
+            if (!existingLanguages.isEmpty()) {
+                languageRepository.deleteAll(existingLanguages);
+            }
+
+            // Save the new languages
+            for (CountryRequest.LanguageRequest languageRequest : countryRequest.getLanguages()) {
+                Language language = new Language();
+                language.setIsoCode(languageRequest.getIsoCode() != null ? languageRequest.getIsoCode().trim() : null);
+                language.setName(languageRequest.getName() != null ? languageRequest.getName().trim() : null);
+                language.setCountryId(updatedCountryInfo.getId());
+                languageRepository.save(language);
+            }
+        }
+
+        return GenericResponse.builder()
+                .message("Country with ISO code " + countryRequest.getIsoCode() + " has been updated successfully.")
+                .statusCode("00")
+                .data(countryInfoMapper.toResponse(updatedCountryInfo))
+                .build();
+    }
+
+    // Delete country information
+    public GenericResponse deleteCountry(Integer id) {
+        CountryInfo countryInfo = countryInfoRepository.findById(id).orElse(null);
+        if (countryInfo == null) {
+            return GenericResponse.builder()
+                    .message("Country not found with ID: " + id)
+                    .statusCode("01")
+                    .data(null)
+                    .build();
+        }
+        countryInfoRepository.delete(countryInfo);
+        return GenericResponse.builder()
+                .message("Country with ID " + id + " has been deleted successfully.")
+                .statusCode("00")
+                .data(null)
+                .build();
+    }
+
     // Helper method to format Request
     private String formatCountryNameRequest(String countryName) {
         templateData = new HashMap<>();
@@ -152,7 +248,7 @@ public class CountryInfoService {
             template = freemarker.getTemplate("country-iso-code.ftl");
             templateData.put("countryName", countryName);
             return FreeMarkerTemplateUtils.processTemplateIntoString(template, templateData);
-        }catch (Exception e) {
+        } catch (Exception e) {
             log.error("------EXCEPTION WHILE PREPARING COUNTRY ISO CODE REQUEST --------:\n{}", e.getMessage());
             return null;
         }
