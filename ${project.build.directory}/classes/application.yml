@@ -1,0 +1,36 @@
+server:
+  port: 8080
+  servlet:
+    context-path: /country-info-st-v1
+spring:
+  application:
+    name: country-info-st-v1
+  datasource:
+    url: ${DB_CONNECTION_STRING:jdbc:mysql://localhost:3306/country_info_db}
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:admin}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      minimum-idle: 10
+      maximum-pool-size: 50
+      idle-timeout: 30000
+      max-lifetime: 60000
+      connection-timeout: 30000
+      pool-name: country-info-pool
+  jpa:
+    properties:
+      show-sql: false
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+
+settings:
+  country-info-url: ${COUNTRY_INFO_URL:http://webservices.oorsprong.org/websamples.countryinfo/CountryInfoService.wso}
+
+springdoc:
+  api-docs:
+    version: OPENAPI_3_0
+    path: /api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    operationsSorter: method
