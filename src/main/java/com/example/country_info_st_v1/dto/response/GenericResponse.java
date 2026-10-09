@@ -1,11 +1,21 @@
 package com.example.country_info_st_v1.dto.response;
 
+import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
+import lombok.NoArgsConstructor;
+
+import java.io.Serial;
+import java.io.Serializable;
 
 @Data
 @Builder
-public class GenericResponse {
+@NoArgsConstructor
+@AllArgsConstructor
+public class GenericResponse implements Serializable {
+    @Serial
+    private static final long serialVersionUID = 1L;
+
     private String message;
     private String statusCode;
     private Object data;

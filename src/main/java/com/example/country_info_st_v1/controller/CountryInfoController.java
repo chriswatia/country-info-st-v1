@@ -7,7 +7,13 @@ import com.example.country_info_st_v1.dto.response.GenericResponse;
 import com.example.country_info_st_v1.service.CountryInfoService;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.enums.ParameterIn;
+import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
@@ -33,11 +39,21 @@ public class CountryInfoController {
         return ResponseEntity.ok(countryInfoResponse);
     }
 
-    // Fetch all country information
+    // Fetch all country information with optional pagination
+    @Operation(
+            summary = "Fetch all countries",
+            description = "Fetch all country information with optional page and size parameters",
+            parameters = {
+                    @Parameter(name = "page", in = ParameterIn.QUERY, description = "Zero-based page index", schema = @Schema(type = "integer", defaultValue = "0")),
+                    @Parameter(name = "size", in = ParameterIn.QUERY, description = "The size of the page to be returned", schema = @Schema(type = "integer", defaultValue = "10"))
+            }
+    )
     @GetMapping("/countries")
-    public ResponseEntity<GenericResponse> getAllCountries() {
-        log.info("=====INCOMING FETCH ALL COUNTRY INFORMATION REQUEST=====");
-        return ResponseEntity.ok(countryInfoService.getAllCountries());
+    public ResponseEntity<GenericResponse> getAllCountries(
+            @Parameter(hidden = true) @PageableDefault(page = 0, size = 10) Pageable pageable) {
+        log.info("=====INCOMING FETCH COUNTRY INFORMATION REQUEST: page={}, size={}=====",
+                pageable.getPageNumber(), pageable.getPageSize());
+        return ResponseEntity.ok(countryInfoService.getCountriesPaginated(pageable));
     }
 
     // Fetch country information by ID

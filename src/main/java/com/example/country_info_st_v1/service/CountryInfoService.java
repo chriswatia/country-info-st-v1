@@ -1,5 +1,6 @@
 package com.example.country_info_st_v1.service;
 
+import com.example.country_info_st_v1.config.CacheConfig;
 import com.example.country_info_st_v1.dto.request.CountryInfoRequest;
 import com.example.country_info_st_v1.dto.request.CountryRequest;
 import com.example.country_info_st_v1.dto.response.CountryIsoCodeResponse;
@@ -16,8 +17,15 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import freemarker.template.Template;
 import lombok.extern.slf4j.Slf4j;
+import com.example.country_info_st_v1.dto.response.PageResponse;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.cache.annotation.Caching;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 import freemarker.template.Configuration;
 import org.springframework.ui.freemarker.FreeMarkerTemplateUtils;
@@ -29,6 +37,7 @@ import org.xml.sax.InputSource;
 import org.xml.sax.SAXException;
 
 import javax.xml.XMLConstants;
+import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.ParserConfigurationException;
 import javax.xml.parsers.DocumentBuilderFactory;
 import java.io.IOException;
@@ -46,13 +55,23 @@ public class CountryInfoService {
     private final LanguageRepository languageRepository;
     private static final ObjectMapper objectMapper = new ObjectMapper();
     private final CountryInfoMapper countryInfoMapper;
+    private static final DocumentBuilderFactory documentBuilderFactory = createSecureDocumentBuilderFactory();
 
-    String xmlRequest = null;
-    HashMap<String, String> httpResponse = null;
-    String responsePayload = null;
-    Map<String, Object> templateData = null;
-    Template template = null;
-    DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
+    private static DocumentBuilderFactory createSecureDocumentBuilderFactory() {
+        DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
+        try {
+            factory.setNamespaceAware(true);
+            factory.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);
+            factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
+            factory.setFeature("http://xml.org/sax/features/external-general-entities", false);
+            factory.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
+            factory.setXIncludeAware(false);
+            factory.setExpandEntityReferences(false);
+        } catch (ParserConfigurationException e) {
+            log.error("Failed to configure secure DocumentBuilderFactory", e);
+        }
+        return factory;
+    }
 
     // Constructor injection for dependencies
     public CountryInfoService(ApplicationProperties applicationProperties, Configuration freemarker,
@@ -67,6 +86,11 @@ public class CountryInfoService {
     }
 
     // Get Country Info by country name
+    @Transactional
+    @Caching(
+            cacheable = @Cacheable(value = CacheConfig.CACHE_COUNTRY_INFO, key = "#countryInfoRequest.name != null ? #countryInfoRequest.name.trim().toLowerCase() : ''", condition = "#countryInfoRequest != null && #countryInfoRequest.name != null"),
+            evict = @CacheEvict(value = CacheConfig.CACHE_COUNTRIES, allEntries = true)
+    )
     public CountryInfoResponse getCountryInfo(CountryInfoRequest countryInfoRequest) throws JsonProcessingException {
         CountryInfoResponse countryInfoResponse = new CountryInfoResponse();
         // Convert the received country name to sentence case
@@ -76,16 +100,16 @@ public class CountryInfoService {
                 .collect(Collectors.joining(" "));
 
         // Format the request payload using FreeMarker template
-        xmlRequest = formatCountryNameRequest(countryName);
+        String xmlRequest = formatCountryNameRequest(countryName);
 
         // Call the external SOAP service to get the ISO Code by country name
-        httpResponse = httpService.HttpPOST(xmlRequest, applicationProperties.getCountryInfoUrl());
-        if (!httpResponse.get("RESPONSE_CODE").equals("200")) {
+        HashMap<String, String> httpResponse = httpService.HttpPOST(xmlRequest, applicationProperties.getCountryInfoUrl());
+        if (!"200".equals(httpResponse.get("RESPONSE_CODE"))) {
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
-                "Country information provider is temporarily unavailable");
+                    "Country information provider is temporarily unavailable");
         }
 
-        responsePayload = httpResponse.get("RESPONSE_BODY");
+        String responsePayload = httpResponse.get("RESPONSE_BODY");
         if (responsePayload == null) {
             throw new IllegalStateException("Country IsoCode service returned an empty response");
         }
@@ -100,9 +124,9 @@ public class CountryInfoService {
 
             httpResponse = httpService.HttpPOST(xmlRequest, applicationProperties.getCountryInfoUrl());
 
-            if (!httpResponse.get("RESPONSE_CODE").equals("200")) {
+            if (!"200".equals(httpResponse.get("RESPONSE_CODE"))) {
                 throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
-                    "Country information provider is temporarily unavailable");
+                        "Country information provider is temporarily unavailable");
             }
 
             responsePayload = httpResponse.get("RESPONSE_BODY");
@@ -114,8 +138,8 @@ public class CountryInfoService {
             countryInfoResponse = parseFullCountryInfoResponse(responsePayload);
 
             // SAVE COUNTRY INFO & LANGUAGES TO DB
-            if (!countryInfoResponse.getIsoCode().isEmpty()) {
-                CountryInfo countryInfo = new CountryInfo();
+            CountryInfo countryInfo = new CountryInfo();
+            if (countryInfoResponse.getIsoCode() != null && !countryInfoResponse.getIsoCode().isEmpty()) {
                 countryInfo.setIsoCode(countryInfoResponse.getIsoCode());
                 countryInfo.setName(countryInfoResponse.getName());
                 countryInfo.setCapitalCity(countryInfoResponse.getCapitalCity());
@@ -127,13 +151,11 @@ public class CountryInfoService {
                 // Check if the country info already exists
                 CountryInfo existingCountryInfo = countryInfoRepository.findByIsoCode(countryInfo.getIsoCode());
                 if (existingCountryInfo == null) {
-                    countryInfoRepository.save(countryInfo);
-                    // Get the saved country info
-                    CountryInfo savedCountryInfo = countryInfoRepository.findByIsoCode(countryInfo.getIsoCode());
+                    CountryInfo savedCountryInfo = countryInfoRepository.save(countryInfo);
                     // Save languages
-                    if (!countryInfoResponse.getLanguages().isEmpty()) {
-                        Language language = new Language();
+                    if (countryInfoResponse.getLanguages() != null && !countryInfoResponse.getLanguages().isEmpty()) {
                         for (LanguageResponse languageResponse : countryInfoResponse.getLanguages()) {
+                            Language language = new Language();
                             language.setIsoCode(languageResponse.getIsoCode());
                             language.setName(languageResponse.getName());
                             language.setCountryId(savedCountryInfo.getId());
@@ -149,6 +171,8 @@ public class CountryInfoService {
     }
 
     // Get all country information
+    @Transactional(readOnly = true)
+    @Cacheable(value = CacheConfig.CACHE_COUNTRIES)
     public GenericResponse getAllCountries() {
         return GenericResponse.builder()
                 .message("Countries fetched successfully.")
@@ -159,7 +183,34 @@ public class CountryInfoService {
                 .build();
     }
 
+    // Get paginated country information
+    @Transactional(readOnly = true)
+    @Cacheable(value = CacheConfig.CACHE_COUNTRIES, key = "{#pageable.pageNumber, #pageable.pageSize}")
+    public GenericResponse getCountriesPaginated(Pageable pageable) {
+        Page<CountryInfo> page = countryInfoRepository.findAll(pageable);
+        List<CountryInfoResponse> content = countryInfoMapper.toResponseList(page.getContent());
+        PageResponse<CountryInfoResponse> pageResponse = PageResponse.<CountryInfoResponse>builder()
+                .content(content)
+                .pageNumber(page.getNumber())
+                .pageSize(page.getSize())
+                .totalElements(page.getTotalElements())
+                .totalPages(page.getTotalPages())
+                .isFirst(page.isFirst())
+                .isLast(page.isLast())
+                .hasNext(page.hasNext())
+                .hasPrevious(page.hasPrevious())
+                .build();
+
+        return GenericResponse.builder()
+                .message("Countries fetched successfully.")
+                .statusCode("00")
+                .data(pageResponse)
+                .build();
+    }
+
     // Get country information by ID
+    @Transactional(readOnly = true)
+    @Cacheable(value = CacheConfig.CACHE_COUNTRY_BY_ID, key = "#id")
     public GenericResponse getCountryById(Integer id) {
         CountryInfo countryInfo = countryInfoRepository.findById(id).orElse(null);
         if (countryInfo == null) {
@@ -178,6 +229,8 @@ public class CountryInfoService {
     }
 
     // Update country information
+    @Transactional
+    @CacheEvict(value = {CacheConfig.CACHE_COUNTRIES, CacheConfig.CACHE_COUNTRY_BY_ID, CacheConfig.CACHE_COUNTRY_INFO}, allEntries = true)
     public GenericResponse updateCountry(CountryRequest countryRequest) {
         CountryInfo countryInfo = countryInfoRepository.findByIsoCode(countryRequest.getIsoCode());
         if (countryInfo == null) {
@@ -225,6 +278,8 @@ public class CountryInfoService {
     }
 
     // Delete country information
+    @Transactional
+    @CacheEvict(value = {CacheConfig.CACHE_COUNTRIES, CacheConfig.CACHE_COUNTRY_BY_ID, CacheConfig.CACHE_COUNTRY_INFO}, allEntries = true)
     public GenericResponse deleteCountry(Integer id) {
         CountryInfo countryInfo = countryInfoRepository.findById(id).orElse(null);
         if (countryInfo == null) {
@@ -244,10 +299,10 @@ public class CountryInfoService {
 
     // Helper method to format Request
     private String formatCountryNameRequest(String countryName) {
-        templateData = new HashMap<>();
+        Map<String, Object> templateData = new HashMap<>();
         freemarker.setClassForTemplateLoading(CountryInfoService.class, "/templates");
         try {
-            template = freemarker.getTemplate("country-iso-code.ftl");
+            Template template = freemarker.getTemplate("country-iso-code.ftl");
             templateData.put("countryName", countryName);
             return FreeMarkerTemplateUtils.processTemplateIntoString(template, templateData);
         } catch (Exception e) {
@@ -257,10 +312,10 @@ public class CountryInfoService {
     }
 
     private String formatFullCountryInfoRequest(String countryIsoCode) {
-        templateData = new HashMap<>();
+        Map<String, Object> templateData = new HashMap<>();
         freemarker.setClassForTemplateLoading(CountryInfoService.class, "/templates");
         try {
-            template = freemarker.getTemplate("country-info.ftl");
+            Template template = freemarker.getTemplate("country-info.ftl");
             templateData.put("countryISOCode", countryIsoCode);
             return FreeMarkerTemplateUtils.processTemplateIntoString(template, templateData);
         } catch (Exception e) {
@@ -271,16 +326,11 @@ public class CountryInfoService {
 
     private CountryIsoCodeResponse parseCountryIsoCodeResponse(String responsePayload) {
         try {
-            factory.setNamespaceAware(true);
-            factory.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);
-            factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
-            factory.setFeature("http://xml.org/sax/features/external-general-entities", false);
-            factory.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
-            factory.setXIncludeAware(false);
-            factory.setExpandEntityReferences(false);
-
-            Document document = factory.newDocumentBuilder()
-                    .parse(new InputSource(new StringReader(responsePayload)));
+            DocumentBuilder builder;
+            synchronized (documentBuilderFactory) {
+                builder = documentBuilderFactory.newDocumentBuilder();
+            }
+            Document document = builder.parse(new InputSource(new StringReader(responsePayload)));
             NodeList results = document.getElementsByTagNameNS("*", "CountryISOCodeResult");
             if (results.getLength() == 0) {
                 throw new IllegalStateException("CountryISOCodeResult is missing from the SOAP response");
@@ -299,16 +349,11 @@ public class CountryInfoService {
 
     private CountryInfoResponse parseFullCountryInfoResponse(String responsePayload) {
         try {
-            factory.setNamespaceAware(true);
-            factory.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);
-            factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
-            factory.setFeature("http://xml.org/sax/features/external-general-entities", false);
-            factory.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
-            factory.setXIncludeAware(false);
-            factory.setExpandEntityReferences(false);
-
-            Document document = factory.newDocumentBuilder()
-                    .parse(new InputSource(new StringReader(responsePayload)));
+            DocumentBuilder builder;
+            synchronized (documentBuilderFactory) {
+                builder = documentBuilderFactory.newDocumentBuilder();
+            }
+            Document document = builder.parse(new InputSource(new StringReader(responsePayload)));
             NodeList results = document.getElementsByTagNameNS("*", "FullCountryInfoResult");
             if (results.getLength() == 0) {
                 throw new IllegalStateException("FullCountryInfoResult is missing from the SOAP response");

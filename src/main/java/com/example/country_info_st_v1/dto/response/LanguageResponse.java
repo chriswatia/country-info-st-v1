@@ -1,9 +1,19 @@
 package com.example.country_info_st_v1.dto.response;
 
+import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Data;
+import lombok.NoArgsConstructor;
+
+import java.io.Serializable;
 
 @Data
-public class LanguageResponse {
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+public class LanguageResponse implements Serializable {
+    private static final long serialVersionUID = 1L;
+
     private String isoCode;
     private String name;
 }

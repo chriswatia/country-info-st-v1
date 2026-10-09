@@ -86,9 +86,13 @@ curl -X POST http://localhost:8080/country-info-st-v1/api/v1/getCountryInfo \
   -d '{"name": "kenya"}'
 ```
 
-#### Fetch All Countries
+#### Fetch Countries (with Pagination)
 ```bash
+# Default pagination (page 0, size 10)
 curl -X GET http://localhost:8080/country-info-st-v1/api/v1/countries
+
+# Custom page and page size
+curl -X GET "http://localhost:8080/country-info-st-v1/api/v1/countries?page=0&size=5"
 ```
 
 #### Fetch Country by ID
