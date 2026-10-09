@@ -13,7 +13,8 @@ kubectl logs -n country-info <pod-name> --previous
 
 **Common Causes:**
 - **ImagePullBackOff:** Image tag does not exist or image registry credentials are missing.
-- **Missing Secrets:** Check that `country-info-secret` exists in namespace `country-info` with keys `DB_CONNECTION_STRING`, `DB_USERNAME`, and `DB_PASSWORD`.
+- **Missing Secrets or Configuration:** Check that `country-info-secret` and `country-info-configmap` exist in namespace `country-info` with keys `DB_CONNECTION_STRING`, `DB_USERNAME`, and `DB_PASSWORD`.
+- **Unable to determine Dialect without JDBC metadata:** The application failed to connect to MySQL during context initialization. Verify the database URL (`DB_CONNECTION_STRING`), host resolution (e.g. `host.docker.internal` for Docker Desktop or internal cluster DB service name), port, and credentials.
 - **Resource Constraints:** Node has insufficient CPU or memory to schedule pods.
 
 ## 2. Pods Running but Not Ready (Readiness Probe Failing)
